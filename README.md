@@ -1,12 +1,4 @@
-# AffixIO NeMo Plugin
 
-[![PyPI](https://img.shields.io/pypi/v/affixio-nemo-plugin?label=PyPI)](https://pypi.org/project/affixio-nemo-plugin/)
-[![Python](https://img.shields.io/pypi/pyversions/affixio-nemo-plugin)](https://pypi.org/project/affixio-nemo-plugin/)
-[![License](https://img.shields.io/github/license/AffixIO/affixio-nemo-plugin)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-15%20passing-1f7a4d)](#test)
-[![AffixIO](https://img.shields.io/badge/AffixIO-proof%20before%20action-214f82)](https://www.affix-io.com/)
-
-**Proof-before-action enforcement for NVIDIA NeMo Agent Toolkit.**
 
 AffixIO NeMo Plugin lets a NeMo workflow ask the AffixIO API whether an agent tool call should run before the tool executes.
 
