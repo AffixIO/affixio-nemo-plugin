@@ -1,0 +1,24 @@
+middleware:
+  affixio_gate:
+    _type: affixio_guard
+    api_key_env: AFFIXIO_API_KEY
+    api_base: https://api.affix-io.com
+    agent_id: nvidia-nemo-agent
+    fail_closed: true
+    allow_review: false
+    audit: true
+    request_attestation: true
+    register_workflow_functions: true
+    policy:
+      allowed_actions:
+        - nemo_tool_call
+      allowed_tools:
+        - approved_customer_lookup
+        - approved_ticket_update
+      require_human_approval: false
+
+functions:
+  approved_customer_lookup:
+    _type: customer_lookup
+    middleware:
+      - affixio_gate
