@@ -1,39 +1,86 @@
-AffixIO NeMo Plugin
 
-AffixIO NeMo Plugin lets a NeMo workflow ask the AffixIO API whether an agent tool call should run before the tool executes.
+# AffixIO NeMo Plugin
 
-NeMo Agent Toolkit -> AffixIO NeMo plugin -> AffixIO API -> ALLOW / DENY / REVIEW -> tool executes or is blocked
+AffixIO NeMo Plugin lets a NVIDIA NeMo Agent Toolkit workflow ask the AffixIO API whether an agent tool call should run before the tool executes.
 
-This is for teams building agentic systems where tool access needs policy, evidence and auditability instead of blind execution.
+```text
+NeMo Agent Toolkit → AffixIO NeMo Plugin → AffixIO API → ALLOW / DENY / REVIEW → Execute or block tool
+```
 
-Why It Exists
+Built for teams developing agentic systems where tool access requires policy enforcement, verifiable evidence and auditability rather than blind execution.
 
-Agents are moving from chat into actions. They look up customers, update tickets, call APIs, run workflows, request refunds and trigger paid tools. The hard part is not only choosing the right tool. The hard part is proving the agent should be allowed to use that tool for this user, with this input, right now.
+## Why It Exists
 
-AffixIO NeMo Plugin gives NeMo builders a small enforcement layer:
+AI agents are moving beyond conversations into real-world actions.
 
-* ALLOW lets the tool run.
-* DENY blocks the tool.
-* REVIEW blocks by default unless you wire a separate human approval layer.
-* API failure blocks by default through fail_closed: true.
-* Decision context can request AffixIO attestation and audit data.
+They look up customers, update tickets, call APIs, run workflows, request refunds and trigger paid tools.
 
-Install
+The challenge isn't simply choosing the correct tool. It's determining whether an agent should be permitted to execute that tool, for a particular user, with particular inputs, at a particular moment.
 
-The NVIDIA NeMo Agent Toolkit core dependency is installed automatically when installing from the updated project configuration.
+AffixIO NeMo Plugin provides a host-side decision layer:
 
+- **ALLOW:** Permits the tool to execute.
+- **DENY:** Blocks the tool before execution.
+- **REVIEW:** Blocks execution by default unless a separate human approval mechanism is implemented.
+- **Fail-closed:** API failures block execution when `fail_closed: true`.
+- **Evidence:** Decision requests can include attestation and audit preferences.
+
+The plugin uses AffixIO's remote decision API. It does not replace NeMo Agent Toolkit's existing authentication, security controls or workflow management.
+
+## Installation
+
+### Requirements
+
+- Python 3.11, 3.12 or 3.13
+- An AffixIO API key
+- Network access to the AffixIO API
+
+The plugin declares `nvidia-nat-core>=1.5,<2` as a required dependency. It is installed automatically when installing the plugin from the updated project configuration.
+
+### Install the plugin
+
+```bash
 pip install affixio-nemo-plugin
+```
 
-For local development from source:
+**Note:** Until a new package version containing the dependency changes is published to PyPI, the command above may install the older package metadata.
 
+To install the latest repository version:
+
+```bash
+pip install git+https://github.com/AffixIO/affixio-nemo-plugin.git
+```
+
+### Local development
+
+Clone the repository:
+
+```bash
+git clone https://github.com/AffixIO/affixio-nemo-plugin.git
+cd affixio-nemo-plugin
+```
+
+Install the plugin and development dependencies:
+
+```bash
 pip install -e ".[dev]"
+```
 
-Set your AffixIO API key:
+### Configure your API key
 
+Set the environment variable:
+
+```bash
 export AFFIXIO_API_KEY="aio_..."
+```
 
-Quick Start
+Do not hardcode production API keys in source files, prompts or public repositories.
 
+## Quick Start
+
+Example configuration showing the intended AffixIO guard placement:
+
+```yaml
 middleware:
   affixio_gate:
     _type: affixio_guard
@@ -51,37 +98,76 @@ middleware:
       allowed_tools:
         - approved_customer_lookup
         - approved_ticket_update
+
 functions:
   approved_customer_lookup:
     _type: customer_lookup
     middleware:
       - affixio_gate
+```
 
-What Gets Sent To AffixIO
+This example illustrates the intended configuration. Replace the example tool names with actual registered NeMo functions and validate the configuration against the installed toolkit version.
 
-For every protected tool call, the plugin sends a structured decision request to:
+## Decision Flow
 
+When a protected tool is called, the intended flow is:
+
+1. The NeMo workflow requests a tool execution.
+2. The AffixIO plugin receives the relevant tool-call context.
+3. The plugin sends a decision request to the AffixIO API.
+4. AffixIO evaluates the request against the supplied policy context.
+5. The plugin interprets the returned decision.
+6. The tool executes only when the decision permits execution.
+
+### Decision outcomes
+
+| Decision | Behaviour |
+| --- | --- |
+| `ALLOW` | Tool execution is permitted. |
+| `DENY` | Tool execution is blocked. |
+| `REVIEW` | Tool execution is blocked by default pending a separately implemented approval process. |
+| API error | Execution is blocked when `fail_closed: true`. |
+
+## What Gets Sent to AffixIO
+
+The plugin sends structured decision requests to:
+
+```http
 POST https://api.affix-io.com/v1/sdk2/actions/decide
+```
 
-The request can include:
+Depending on the available workflow context and configuration, requests can include:
 
-* NeMo agent id
-* tool name
-* tool input payload
-* workflow run id when available
-* user id when available
-* policy context
-* request context
-* attestation and audit preferences
+- NeMo agent ID
+- Tool name
+- Tool input payload
+- Workflow run ID, when available
+- User ID, when available
+- Policy context
+- Request context
+- Attestation preferences
+- Audit preferences
 
-AffixIO returns the decision used by the plugin to execute or block the tool.
+The AffixIO API returns a decision that the plugin uses to determine whether execution should proceed.
 
-Python API
+Only send the information required to evaluate the decision. Avoid including unnecessary personal information, credentials or sensitive data in tool inputs.
 
+## Python API
+
+The plugin also exposes a Python client for requesting AffixIO decisions.
+
+```python
 from affixio_nemo import AffixIOClient, GuardRequest
 from affixio_nemo.models import AffixClientConfig
 from pydantic import SecretStr
-client = AffixIOClient(AffixClientConfig(api_key=SecretStr("aio_...")))
+import os
+
+client = AffixIOClient(
+    AffixClientConfig(
+        api_key=SecretStr(os.environ["AFFIXIO_API_KEY"])
+    )
+)
+
 decision = await client.decide_tool_call(
     GuardRequest(
         agent_id="nemo-agent",
@@ -93,52 +179,123 @@ decision = await client.decide_tool_call(
         "allowed_tools": ["approved_customer_lookup"],
     },
 )
+
 if decision.should_execute:
+    # Execute the approved tool here.
     pass
+else:
+    # Do not execute the tool.
+    pass
+```
 
-Safety Defaults
+The example assumes execution inside an asynchronous Python function or environment.
 
-The plugin is intentionally conservative.
+## Safety Defaults
 
-Setting	Default	Why it matters
-fail_closed	true	API errors block execution instead of silently allowing tools.
-allow_review	false	Review outcomes do not execute unless you add a separate approval layer.
-request_attestation	true	AffixIO can return signed decision evidence where enabled.
-audit	true	Decision calls can be included in the audit path.
+The plugin is designed to support conservative enforcement behaviour.
 
-NeMo Plugin Entry Point
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `fail_closed` | `true` | Blocks tool execution when decision requests fail. |
+| `allow_review` | `false` | Prevents review outcomes from automatically executing tools. |
+| `request_attestation` | `true` | Requests decision evidence where supported. |
+| `audit` | `true` | Includes decision requests in the configured audit path. |
 
-The package registers itself through:
+### Important security considerations
 
+- Keep API keys in environment variables or an appropriate secret manager.
+- Never expose API credentials through prompts or tool arguments.
+- Treat agent-generated tool inputs as untrusted.
+- Validate authorization before performing protected actions.
+- Avoid automatically converting `REVIEW` decisions into permission to execute.
+- Test failure behaviour before production deployment.
+- Use least-privilege policies for tools and workflows.
+
+## NeMo Plugin Registration
+
+The package declares a NeMo Agent Toolkit plugin entry point in `pyproject.toml`:
+
+```toml
 [project.entry-points."nat.plugins"]
 affixio_nemo = "affixio_nemo.register"
+```
 
-Test
+The entry point allows compatible NeMo Agent Toolkit installations to discover the plugin through Python package metadata.
 
+## Testing
+
+Install the development dependencies before running the tests:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Run the test suite:
+
+```bash
 python -m pytest tests -q
+```
 
-Previously reported local package test status: 15 passed. Re-run the tests after updating the dependencies.
+Previously reported local test result:
 
-Build
+```text
+15 passed
+```
 
+This result predates the latest dependency changes. Installation, plugin discovery and compatibility tests must be rerun against the updated configuration.
+
+## Building
+
+Build the Python package:
+
+```bash
 python -m build
+```
+
+Validate the generated distribution:
+
+```bash
 python -m twine check dist/*
+```
 
-Security
+Before publishing, verify that the built package contains the correct dependency metadata and plugin entry point.
 
-Do not put AffixIO API keys in prompts, notebooks, logs or browser code. Use environment variables or NeMo configuration secrets.
+## Security
 
-The plugin does not run a local policy engine. It uses AffixIO API decisions, forwards only the tool-call context needed for a decision, and fails closed unless configured otherwise.
+The AffixIO NeMo Plugin uses remote AffixIO API decisions rather than running a local policy engine.
 
-To report a vulnerability, email hello@affix-io.com with the subject Security: affixio-nemo-plugin.
+It is intended to provide an additional authorization decision point for protected tool calls.
 
-Links
+It does not independently guarantee the security of an entire agent workflow, and its enforcement depends on correct integration with the host application.
 
-* AffixIO: https://www.affix-io.com/
-* Docs: https://www.affix-io.com/docs/
-* API capabilities: https://api.affix-io.com/v1/sdk2/capabilities
-* PyPI package: https://pypi.org/project/affixio-nemo-plugin/
+Do not place AffixIO API keys in:
 
-License
+- Prompts
+- Public repositories
+- Notebooks shared with third parties
+- Browser-side code
+- Application logs
+
+To report a security vulnerability, email:
+
+**hello@affix-io.com**
+
+Subject:
+
+`Security: affixio-nemo-plugin`
+
+Please avoid publicly disclosing exploitable vulnerabilities before they can be investigated.
+
+## Project Links
+
+- **AffixIO:** https://www.affix-io.com/
+- **Documentation:** https://www.affix-io.com/docs/
+- **API capabilities:** https://api.affix-io.com/v1/sdk2/capabilities
+- **Source repository:** https://github.com/AffixIO/affixio-nemo-plugin
+- **PyPI package:** https://pypi.org/project/affixio-nemo-plugin/
+- **NVIDIA NeMo Agent Toolkit:** https://github.com/NVIDIA/NeMo-Agent-Toolkit
+- **NVIDIA integration discussion:** https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/2427
+
+## License
 
 Apache-2.0
