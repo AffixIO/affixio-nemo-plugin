@@ -37,7 +37,11 @@ class AffixIONeMoGuardConfig(DynamicMiddlewareConfig, name="affixio_guard"):
 
 class AffixIONeMoGuard(DynamicFunctionMiddleware):
     def __init__(self, config: AffixIONeMoGuardConfig, builder: Any | None = None):
-        super().__init__(config, builder)
+        # NeMo initialises dynamic workflow discovery from the supplied builder.
+        # Keep direct construction usable for embedding and unit tests, where
+        # there is intentionally no workflow builder to inspect or patch.
+        if builder is not None:
+            super().__init__(config, builder)
         self._config = config
         self._builder = builder
         self._client = AffixIOClient(self._client_config(config))
