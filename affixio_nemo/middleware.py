@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import os
@@ -36,7 +37,7 @@ class AffixIONeMoGuardConfig(DynamicMiddlewareConfig, name="affixio_guard"):
 
 class AffixIONeMoGuard(DynamicFunctionMiddleware):
     def __init__(self, config: AffixIONeMoGuardConfig, builder: Any | None = None):
-        super().__init__()
+        super().__init__(config, builder)
         self._config = config
         self._builder = builder
         self._client = AffixIOClient(self._client_config(config))
@@ -58,22 +59,41 @@ class AffixIONeMoGuard(DynamicFunctionMiddleware):
             metadata={"middleware": "affixio_guard"},
         )
         try:
-            decision = await self._client.decide_tool_call(guard_request, policy=self._config.policy, context=self._config.context)
+            decision = await self._client.decide_tool_call(
+                guard_request,
+                policy=self._config.policy,
+                context=self._config.context,
+            )
         except AffixIOApiError:
             if self._config.fail_closed:
                 raise
             return None
-        if decision.should_execute or (self._config.allow_review and decision.decision == "review"):
+
+        if decision.should_execute or (
+            self._config.allow_review and decision.decision == "review"
+        ):
             self._attach_decision(context, decision.model_dump(mode="json"))
             return context
+
         raise AffixIOToolBlocked(decision.model_dump(mode="json"))
 
     @staticmethod
     def _client_config(config: AffixIONeMoGuardConfig) -> AffixClientConfig:
-        key = config.api_key.get_secret_value() if config.api_key else os.getenv(config.api_key_env)
+        key = (
+            config.api_key.get_secret_value()
+            if config.api_key
+            else os.getenv(config.api_key_env)
+        )
         if not key:
             raise AffixIOConfigurationError("AffixIO API key is required")
-        return AffixClientConfig(api_key=SecretStr(key), api_base=config.api_base, timeout_seconds=config.timeout_seconds, audit=config.audit, request_attestation=config.request_attestation)
+
+        return AffixClientConfig(
+            api_key=SecretStr(key),
+            api_base=config.api_base,
+            timeout_seconds=config.timeout_seconds,
+            audit=config.audit,
+            request_attestation=config.request_attestation,
+        )
 
     @staticmethod
     def _tool_name(context: Any) -> str:
@@ -85,6 +105,7 @@ class AffixIONeMoGuard(DynamicFunctionMiddleware):
     def _tool_input(context: Any) -> Any:
         args = getattr(context, "modified_args", None)
         kwargs = getattr(context, "modified_kwargs", None)
+
         if args and kwargs:
             return {"args": list(args), "kwargs": dict(kwargs)}
         if args:
@@ -101,6 +122,7 @@ class AffixIONeMoGuard(DynamicFunctionMiddleware):
             value = getattr(Context.get(), name, None)
         except (AttributeError, ImportError, LookupError, RuntimeError):
             value = None
+
         return str(value) if value is not None else None
 
     @staticmethod
