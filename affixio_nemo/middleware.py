@@ -73,9 +73,11 @@ class AffixIONeMoGuard(DynamicFunctionMiddleware):
                 raise
             return None
 
-        if decision.should_execute or (
-            self._config.allow_review and decision.decision == "review"
-        ):
+        # A review decision is never permission to execute. Human approval must
+        # be completed by a separate, explicit control plane before the tool is
+        # invoked. Keep ``allow_review`` for configuration compatibility, but
+        # do not let middleware configuration turn REVIEW into an allow result.
+        if decision.should_execute and decision.decision != "review":
             self._attach_decision(context, decision.model_dump(mode="json"))
             return context
 
