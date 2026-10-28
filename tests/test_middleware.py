@@ -73,10 +73,10 @@ def test_review_blocks_by_default() -> None:
     asyncio.run(run())
 
 
-def test_review_can_be_allowed_when_configured() -> None:
+def test_review_never_executes_from_middleware_configuration() -> None:
     async def run() -> None:
-        _, result, context = await invoke("review", allow_review=True)
-        assert result is context
+        with pytest.raises(AffixIOToolBlocked):
+            await invoke("review", allow_review=True)
 
     asyncio.run(run())
 
